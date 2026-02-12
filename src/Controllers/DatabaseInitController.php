@@ -145,6 +145,19 @@ class DatabaseInitController
             )
         ");
 
+        // Crear tabla refresh_tokens si no existe
+        $this->database->exec("
+            CREATE TABLE IF NOT EXISTS refresh_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at DATETIME NOT NULL,
+                revoked_at DATETIME DEFAULT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        ");
+
         $response->getBody()->write(json_encode([
             'status' => 'ok',
             'message' => 'Database initialized (if not exists)'
