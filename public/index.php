@@ -46,6 +46,7 @@ $app->group('/auth', function($group) {
     $group->post('/login', AuthController::class . ':login');
     $group->post('/refresh', AuthController::class . ':refresh');
     $group->post('/logout', AuthController::class . ':logout')->add(AuthMiddleware::class);
+    $group->patch('/password', AuthController::class . ':changePassword')->add(AuthMiddleware::class);
 });
 
 $app->group('/weeks', function($group) {

@@ -202,6 +202,96 @@ class AuthController
         ]);
     }
 
+    public function changePassword(
+        ServerRequestInterface $request,
+        ResponseInterface      $response
+    ): ResponseInterface
+    {
+        $auth = $request->getAttribute('auth');
+        $userId = is_array($auth) ? (int)($auth['sub'] ?? 0) : 0;
+        if ($userId <= 0) {
+            return $this->json($response, [
+                'error' => 'Invalid access token payload'
+            ], 401);
+        }
+
+        $data = $request->getParsedBody() ?? [];
+        $currentPassword = $data['current_password'] ?? null;
+        $newPassword = $data['new_password'] ?? null;
+        $newPasswordConfirmation = $data['new_password_confirmation'] ?? null;
+
+        if (!$currentPassword || !$newPassword || !$newPasswordConfirmation) {
+            return $this->json($response, [
+                'error' => 'current_password, new_password and new_password_confirmation are required'
+            ], 400);
+        }
+
+        if ($newPassword !== $newPasswordConfirmation) {
+            return $this->json($response, [
+                'error' => 'new_password and new_password_confirmation must match'
+            ], 400);
+        }
+
+        if (strlen($newPassword) < 8) {
+            return $this->json($response, [
+                'error' => 'new_password must be at least 8 characters'
+            ], 400);
+        }
+
+        $userStmt = $this->database->prepare("
+            SELECT id, password
+            FROM users
+            WHERE id = :id AND is_deleted = 0
+            LIMIT 1
+        ");
+        $userStmt->execute([':id' => $userId]);
+        $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$user) {
+            return $this->json($response, [
+                'error' => 'User not found'
+            ], 404);
+        }
+
+        if (!password_verify($currentPassword, $user['password'])) {
+            return $this->json($response, [
+                'error' => 'Current password is incorrect'
+            ], 401);
+        }
+
+        if (password_verify($newPassword, $user['password'])) {
+            return $this->json($response, [
+                'error' => 'New password must be different from current password'
+            ], 400);
+        }
+
+        $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+
+        $updateUser = $this->database->prepare("
+            UPDATE users
+            SET password = :password, updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+        ");
+        $updateUser->execute([
+            ':password' => $newPasswordHash,
+            ':id' => $userId
+        ]);
+
+        $revokeRefreshTokens = $this->database->prepare("
+            UPDATE refresh_tokens
+            SET revoked_at = CURRENT_TIMESTAMP
+            WHERE user_id = :user_id
+              AND revoked_at IS NULL
+        ");
+        $revokeRefreshTokens->execute([
+            ':user_id' => $userId
+        ]);
+
+        return $this->json($response, [
+            'message' => 'Password updated successfully'
+        ]);
+    }
+
     private function createJwt(array $payload): string
     {
         $header = ['alg' => 'HS256', 'typ' => 'JWT'];
