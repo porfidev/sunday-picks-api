@@ -1,0 +1,25 @@
+{
+    "name": "porfidev/sunday-picks-api",
+    "description": "Api services to store api picks",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Porfirio Chávez",
+            "email": "hola@porfi.dev",
+            "homepage": "https://porfi.dev"
+        }
+    ],
+    "type": "project",
+    "require": {
+        "slim/slim": "4.*",
+        "slim/psr7": "^1.8",
+        "ext-pdo": "*",
+        "php-di/php-di": "^7.1",
+        "vlucas/phpdotenv": "^5.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}
