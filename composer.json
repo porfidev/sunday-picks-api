@@ -1,5 +1,6 @@
 {
     "name": "porfidev/sunday-picks-api",
+    "version": "1.0.2",
     "description": "Api services to store api picks",
     "license": "MIT",
     "authors": [

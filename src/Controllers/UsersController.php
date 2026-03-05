@@ -230,7 +230,7 @@ class UsersController
         $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $response->getBody()->write(json_encode([
-            'data' => $users,
+            'items' => $users,
             'count' => count($users)
         ]));
 

@@ -236,7 +236,7 @@ class TeamsController
         $teams = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         $response->getBody()->write(json_encode([
-            'data' => $teams
+            'items' => $teams
         ]));
 
         return $response

@@ -189,7 +189,7 @@ class SeasonsController
         $weeks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $response->getBody()->write(json_encode([
-            'data' => $weeks
+            'items' => $weeks
         ]));
 
         return $response
