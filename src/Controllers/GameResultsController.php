@@ -20,64 +20,115 @@ class GameResultsController
     ): ResponseInterface {
         $data = $request->getParsedBody();
 
-        $gameId = $data['game_id'] ?? null;
-        $localScore = $data['local_score'] ?? null;
-        $visitScore = $data['visit_score'] ?? null;
-
-        if ($gameId === null || $localScore === null || $visitScore === null) {
-            return $this->errorResponse($response, 'All fields are required', 400);
+        if (!is_array($data)) {
+            return $this->errorResponse($response, 'Invalid request body', 400);
         }
 
-        if (!is_numeric($localScore) || !is_numeric($visitScore) || $localScore < 0 || $visitScore < 0) {
-            return $this->errorResponse($response, 'Scores must be non-negative numbers', 400);
+        $resultsToCreate = array_is_list($data) ? $data : [$data];
+
+        if (count($resultsToCreate) === 0) {
+            return $this->errorResponse($response, 'At least one result is required', 400);
         }
 
-        $stmt = $this->database->prepare("SELECT id FROM games WHERE id = :id");
-        $stmt->execute([':id' => $gameId]);
+        $normalizedResults = [];
+        $seenGameIds = [];
 
-        if (!$stmt->fetch(PDO::FETCH_ASSOC)) {
-            return $this->errorResponse($response, 'Game not found', 404);
-        }
+        foreach ($resultsToCreate as $index => $resultData) {
+            if (!is_array($resultData)) {
+                return $this->errorResponse($response, "Invalid result format at index {$index}", 400);
+            }
 
-        $stmt = $this->database->prepare("SELECT id FROM game_results WHERE game_id = :game_id");
-        $stmt->execute([':game_id' => $gameId]);
+            $gameId = $resultData['game_id'] ?? null;
+            $localScore = $resultData['local_score'] ?? null;
+            $visitScore = $resultData['visit_score'] ?? null;
 
-        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
-            return $this->errorResponse($response, 'Game already has a result', 409);
+            if ($gameId === null || $localScore === null || $visitScore === null) {
+                return $this->errorResponse($response, "All fields are required at index {$index}", 400);
+            }
+
+            if (!is_numeric($localScore) || !is_numeric($visitScore) || $localScore < 0 || $visitScore < 0) {
+                return $this->errorResponse($response, "Scores must be non-negative numbers at index {$index}", 400);
+            }
+
+            if (isset($seenGameIds[(string)$gameId])) {
+                return $this->errorResponse($response, "Duplicated game_id in request at index {$index}", 409);
+            }
+            $seenGameIds[(string)$gameId] = true;
+
+            $normalizedResults[] = [
+                'game_id' => $gameId,
+                'local_score' => (int)$localScore,
+                'visit_score' => (int)$visitScore,
+            ];
         }
 
         try {
             $this->database->beginTransaction();
 
+            $createdIds = [];
+            $checkGameExists = $this->database->prepare("SELECT id FROM games WHERE id = :id");
+            $checkGameResultExists = $this->database->prepare("SELECT id FROM game_results WHERE game_id = :game_id");
             $insert = $this->database->prepare(
                 "INSERT INTO game_results (game_id, local_score, visit_score)
                  VALUES (:game_id, :local_score, :visit_score)"
             );
-
-            $insert->execute([
-                ':game_id' => $gameId,
-                ':local_score' => (int)$localScore,
-                ':visit_score' => (int)$visitScore,
-            ]);
-
             $markAsPlayed = $this->database->prepare(
                 "UPDATE games SET is_played = 1, updated_at = CURRENT_TIMESTAMP WHERE id = :id"
             );
-            $markAsPlayed->execute([':id' => $gameId]);
+
+            foreach ($normalizedResults as $resultToCreate) {
+                $checkGameExists->execute([':id' => $resultToCreate['game_id']]);
+                if (!$checkGameExists->fetch(PDO::FETCH_ASSOC)) {
+                    throw new PDOException('Game not found');
+                }
+
+                $checkGameResultExists->execute([':game_id' => $resultToCreate['game_id']]);
+                if ($checkGameResultExists->fetch(PDO::FETCH_ASSOC)) {
+                    throw new PDOException('Game already has a result');
+                }
+
+                $insert->execute([
+                    ':game_id' => $resultToCreate['game_id'],
+                    ':local_score' => $resultToCreate['local_score'],
+                    ':visit_score' => $resultToCreate['visit_score'],
+                ]);
+                $createdIds[] = (int)$this->database->lastInsertId();
+
+                $markAsPlayed->execute([':id' => $resultToCreate['game_id']]);
+            }
 
             $this->database->commit();
         } catch (PDOException $e) {
             if ($this->database->inTransaction()) {
                 $this->database->rollBack();
             }
+
+            if ($e->getMessage() === 'Game not found') {
+                return $this->errorResponse($response, 'Game not found', 404);
+            }
+
+            if ($e->getMessage() === 'Game already has a result') {
+                return $this->errorResponse($response, 'Game already has a result', 409);
+            }
+
             return $this->errorResponse($response, 'Unable to create game result', 500);
         }
 
-        $resultId = $this->database->lastInsertId();
+        if (count($createdIds) === 1) {
+            $response->getBody()->write(json_encode([
+                'id' => $createdIds[0],
+                'message' => 'Game result created successfully'
+            ]));
+
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(201);
+        }
 
         $response->getBody()->write(json_encode([
-            'id' => $resultId,
-            'message' => 'Game result created successfully'
+            'ids' => $createdIds,
+            'count' => count($createdIds),
+            'message' => 'Game results created successfully'
         ]));
 
         return $response

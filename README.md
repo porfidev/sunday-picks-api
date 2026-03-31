@@ -236,6 +236,26 @@ curl -X POST http://localhost:8080/game-results \
   }'
 ```
 
+Crear resultados en lote:
+
+```bash
+curl -X POST http://localhost:8080/game-results \
+  -H "Authorization: Bearer TU_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "game_id": 1,
+      "local_score": 24,
+      "visit_score": 17
+    },
+    {
+      "game_id": 2,
+      "local_score": 10,
+      "visit_score": 7
+    }
+  ]'
+```
+
 ## Notas
 
 - Al registrar un `game_result`, el juego se marca automaticamente con `is_played = 1`.

@@ -290,4 +290,131 @@ class UsersController
             ->withHeader('Content-Type', 'application/json')
             ->withStatus(200);
     }
+
+    public function changePassword(
+        ServerRequestInterface $request,
+        ResponseInterface      $response,
+        array                  $args
+    ): ResponseInterface
+    {
+
+        $id = isset($args['id']) ? (int)$args['id'] : 0;
+        if ($id <= 0) {
+            $response->getBody()->write(json_encode([
+                'error' => 'User id is required'
+            ]));
+            return $response->withStatus(400)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        $auth = $request->getAttribute('auth');
+        $authUserId = is_array($auth) ? (int)($auth['sub'] ?? 0) : 0;
+        if ($authUserId <= 0) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Invalid access token payload'
+            ]));
+            return $response->withStatus(401)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        if ($authUserId !== $id) {
+            $response->getBody()->write(json_encode([
+                'error' => 'You can only change your own password'
+            ]));
+            return $response->withStatus(403)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        $data = $request->getParsedBody() ?? [];
+        $currentPassword = $data['current_password'] ?? null;
+        $newPassword = $data['new_password'] ?? null;
+        $newPasswordConfirmation = $data['new_password_confirmation'] ?? null;
+
+        if (!$currentPassword || !$newPassword || !$newPasswordConfirmation) {
+            $response->getBody()->write(json_encode([
+                'error' => 'current_password, new_password and new_password_confirmation are required'
+            ]));
+            return $response->withStatus(400)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        if ($newPassword !== $newPasswordConfirmation) {
+            $response->getBody()->write(json_encode([
+                'error' => 'new_password and new_password_confirmation must match'
+            ]));
+            return $response->withStatus(400)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        if (strlen($newPassword) < 8) {
+            $response->getBody()->write(json_encode([
+                'error' => 'new_password must be at least 8 characters'
+            ]));
+            return $response->withStatus(400)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        $userStmt = $this->database->prepare("
+            SELECT id, password
+            FROM users
+            WHERE id = :id AND is_deleted = 0
+            LIMIT 1
+        ");
+        $userStmt->execute([':id' => $id]);
+        $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$user) {
+            $response->getBody()->write(json_encode([
+                'error' => 'User not found'
+            ]));
+            return $response->withStatus(404)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        if (!password_verify($currentPassword, $user['password'])) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Current password is incorrect'
+            ]));
+            return $response->withStatus(401)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        if (password_verify($newPassword, $user['password'])) {
+            $response->getBody()->write(json_encode([
+                'error' => 'New password must be different from current password'
+            ]));
+            return $response->withStatus(400)
+                ->withHeader('Content-Type', 'application/json');
+        }
+
+        $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+
+        $updateUser = $this->database->prepare("
+            UPDATE users
+            SET password = :password, updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+        ");
+        $updateUser->execute([
+            ':password' => $newPasswordHash,
+            ':id' => $id
+        ]);
+
+        $revokeRefreshTokens = $this->database->prepare("
+            UPDATE refresh_tokens
+            SET revoked_at = CURRENT_TIMESTAMP
+            WHERE user_id = :user_id
+              AND revoked_at IS NULL
+        ");
+        $revokeRefreshTokens->execute([
+            ':user_id' => $id
+        ]);
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Password updated successfully'
+        ]));
+
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus(200);
+    }
 }

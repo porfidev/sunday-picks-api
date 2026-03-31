@@ -224,7 +224,7 @@ class GamesController
         $games = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $response->getBody()->write(json_encode([
-            'data' => $games
+            'items' => $games
         ]));
 
         return $response

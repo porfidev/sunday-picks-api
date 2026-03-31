@@ -81,6 +81,7 @@ $app->get('/init-db',DatabaseInitController::class. ':init');
 
 $app->group('/users', function($group) {
     $group->post('/', UsersController::class . ':register');
+    $group->patch('/{id}/password', UsersController::class . ':changePassword');
     $group->put('/{id}', UsersController::class . ':update');
     $group->delete('/{id}', UsersController::class . ':delete');
     $group->get('/', UsersController::class . ':index');
