@@ -75,6 +75,15 @@ $app->add(function (Request $request, RequestHandlerInterface $handler) use ($al
 
 $app->addBodyParsingMiddleware();
 $errorMiddleware = $app->addErrorMiddleware(true, true, true);
+$app->get('/', function(Request $request, Response $response) {
+   $html = file_get_contents(__DIR__ . '/home.html');
+   $composer = json_decode(file_get_contents(__DIR__ . '/../composer.json'), true);
+   $version = $composer['version'] ?? 'unreleased';
+   $html = str_replace('{{version}}', $version, $html);
+
+   $response->getBody()->write($html);
+   return $response->withHeader('Content-Type', 'text/html');
+});
 $app->get('/version', HealthController::class. ':version');
 $app->get('/ping', HealthController::class. ':ping');
 $app->get('/init-db',DatabaseInitController::class. ':init');
